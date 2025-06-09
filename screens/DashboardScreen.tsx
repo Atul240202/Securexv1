@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MainLayout from '../layouts/MainLayout';
@@ -35,6 +36,7 @@ export default function DashboardScreen({navigation}) {
   const [screenTime, setScreenTime] = useState(0);
   const [usageApps, setUsageApps] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Check usage access permission on mount
@@ -44,7 +46,8 @@ export default function DashboardScreen({navigation}) {
 
   // Fetch stats
   useEffect(() => {
-    fetchAllData();
+    setLoading(true);
+    fetchAllData().then(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -61,37 +64,38 @@ export default function DashboardScreen({navigation}) {
   function fetchAllData() {
     setRefreshing(true);
 
-    getInstalledAppCount().then(apps => {
-      const totalApps = apps.length;
-      const riskApps = apps.filter(app =>
-        app.permissions?.some(p =>
-          criticalPermissions.some(crit => p.toUpperCase().includes(crit)),
-        ),
-      ).length;
-      const topApps = [...apps]
-        .sort(
-          (a, b) => (b.permissions?.length || 0) - (a.permissions?.length || 0),
-        )
-        .slice(0, 5)
-        .map(app => ({
-          name: app.name,
-          usageMinutes: app.permissions?.length || 0,
-          icon: 'apps',
-        }));
-      setStats({totalApps, riskApps, topApps});
-    });
+    return Promise.all([
+      getInstalledAppCount().then(apps => {
+        const totalApps = apps.length;
+        const riskApps = apps.filter(app =>
+          app.permissions?.some(p =>
+            criticalPermissions.some(crit => p.toUpperCase().includes(crit)),
+          ),
+        ).length;
+        const topApps = [...apps]
+          .sort(
+            (a, b) =>
+              (b.permissions?.length || 0) - (a.permissions?.length || 0),
+          )
+          .slice(0, 5)
+          .map(app => ({
+            name: app.name,
+            usageMinutes: app.permissions?.length || 0,
+            icon: 'apps',
+          }));
+        setStats({totalApps, riskApps, topApps});
+      }),
 
-    // Get screen-on time
-    getTodayScreenOnTime()
-      .then(sec => setScreenTime(sec))
-      .catch(() => setScreenTime(0));
+      // Get screen-on time
+      getTodayScreenOnTime()
+        .then(sec => setScreenTime(sec))
+        .catch(() => setScreenTime(0)),
 
-    // Get usage stats
-    getTodayUsageStats()
-      .then(apps => setUsageApps(apps || []))
-      .catch(() => setUsageApps([]));
-
-    setRefreshing(false);
+      // Get usage stats
+      getTodayUsageStats()
+        .then(apps => setUsageApps(apps || []))
+        .catch(() => setUsageApps([])),
+    ]).finally(() => setRefreshing(false));
   }
 
   // Human-readable time
@@ -100,6 +104,17 @@ export default function DashboardScreen({navigation}) {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     return h ? `${h}h ${m}m` : `${m} min`;
+  }
+
+  if (loading) {
+    return (
+      <MainLayout current="dashboard" activeTime="--">
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color="#4b7bec" />
+          <Text>Loading dashboard data...</Text>
+        </View>
+      </MainLayout>
+    );
   }
 
   return (

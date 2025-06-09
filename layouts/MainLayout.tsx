@@ -16,7 +16,7 @@ export default function MainLayout({
 }: MainLayoutProps) {
   return (
     <View style={styles.container}>
-      <Header />
+      {/* <Header /> */}
       <View style={styles.content}>{children}</View>
       <FloatingNavBar current={current} />
     </View>
@@ -30,6 +30,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingBottom: 100,
+    paddingBottom: 80,
   },
 });

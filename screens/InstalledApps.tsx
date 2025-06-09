@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MainLayout from '../layouts/MainLayout';
@@ -60,16 +61,31 @@ type RootStackParamList = {
 export default function InstalledApps() {
   const [search, setSearch] = useState('');
   const [apps, setApps] = useState<App[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
-    getInstalledAppCount().then(setApps);
+    setLoading(true);
+    getInstalledAppCount()
+      .then(setApps)
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredApps = apps.filter(app =>
     app.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  if (loading) {
+    return (
+      <MainLayout current="InstalledApps" activeTime="N/A">
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color="#4b7bec" />
+          <Text>Loading installed apps...</Text>
+        </View>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout current="InstalledApps" activeTime="N/A">
@@ -85,6 +101,7 @@ export default function InstalledApps() {
         <TextInput
           style={styles.searchInput}
           placeholder="Search apps..."
+          placeholderTextColor="black"
           value={search}
           onChangeText={setSearch}
         />
@@ -166,6 +183,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    color: 'black',
     fontSize: 15,
     marginBottom: 16,
   },

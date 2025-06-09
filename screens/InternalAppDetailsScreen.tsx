@@ -7,6 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import MainLayout from '../layouts/MainLayout';
 import {getInstalledAppCount} from '../modules/AppListModule';
@@ -48,14 +49,27 @@ export default function InternalAppDetailsScreen() {
   const navigation = useNavigation();
   const {appName} = route.params;
   const [app, setApp] = useState(null);
-
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
+    setLoading(true);
     getInstalledAppCount().then(apps => {
       // Find app with matching package name
       const found = apps.find(a => a.packageName === appName);
       setApp(found);
+      setLoading(false);
     });
   }, [appName]);
+
+  if (loading) {
+    return (
+      <MainLayout current="InstalledApps" activeTime="N/A">
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color="#4b7bec" />
+          <Text>Loading app details...</Text>
+        </View>
+      </MainLayout>
+    );
+  }
 
   if (!app) {
     return (
@@ -282,6 +296,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fffbea',
     borderRadius: 12,
     padding: 16,
+    bottom: 20,
     borderWidth: 1,
     borderColor: '#fde68a',
   },

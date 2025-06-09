@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   Image,
   ScrollView,
@@ -11,7 +11,8 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MainLayout from '../layouts/MainLayout';
 import {useNavigation} from '@react-navigation/native';
-import {internalAppDetails} from '../data/mockData';
+import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {getInstalledAppCount} from '../modules/AppListModule';
 
 const riskColors = {
   High: {bg: '#fde8e8', color: '#d32f2f'},
@@ -19,14 +20,53 @@ const riskColors = {
   Low: {bg: '#e8f5e9', color: '#388e3c'},
 };
 
+interface App {
+  name: string;
+  packageName: string;
+  icon?: string;
+  permissions?: string[];
+}
+
+type RiskLevel = 'High' | 'Medium' | 'Low';
+
+function getRisk(app: App): RiskLevel {
+  const criticals: string[] = [
+    'CAMERA',
+    'RECORD_AUDIO',
+    'ACCESS_FINE_LOCATION',
+    'ACCESS_COARSE_LOCATION',
+    'READ_CONTACTS',
+    'READ_SMS',
+    'SEND_SMS',
+    'CALL_PHONE',
+    'READ_CALL_LOG',
+  ];
+  const found: string[] =
+    app.permissions?.filter((p: string) =>
+      criticals.some((c: string) => p.toUpperCase().includes(c)),
+    ) || [];
+  if (found.length >= 3) return 'High';
+  if (found.length === 2) return 'Medium';
+  return 'Low';
+}
+
+type RootStackParamList = {
+  InstalledApps: undefined;
+  InternalAppDetailsScreen: {appName: string};
+  Dashboard: undefined;
+  PermissionsOverview: undefined;
+};
+
 export default function InstalledApps() {
   const [search, setSearch] = useState('');
-  const navigation = useNavigation();
+  const [apps, setApps] = useState<App[]>([]);
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // Convert object to array
-  const apps = Object.values(internalAppDetails);
+  useEffect(() => {
+    getInstalledAppCount().then(setApps);
+  }, []);
 
-  // Filter apps by search term
   const filteredApps = apps.filter(app =>
     app.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -49,39 +89,46 @@ export default function InstalledApps() {
           onChangeText={setSearch}
         />
         <View style={styles.appList}>
-          {filteredApps.map((app: any) => (
+          {filteredApps.map((app, idx) => (
             <TouchableOpacity
-              key={app.id}
+              key={app.packageName || idx}
               style={styles.appCard}
               onPress={() =>
-                navigation.navigate(
-                  'InternalAppDetailsScreen' as never,
-                  {appName: app.id} as never,
-                )
+                navigation.navigate('InternalAppDetailsScreen', {
+                  appName: app.packageName,
+                })
               }>
-              {/* You can use an icon or a placeholder image */}
-              <Ionicons
-                name={app.icon || 'apps'}
-                size={36}
-                color="#4b7bec"
-                style={styles.appIconImage}
-              />
+              {/* Use app icon if possible, else fallback icon */}
+              {app.icon?.startsWith('data:image') ? (
+                <Image
+                  source={{uri: app.icon}}
+                  style={styles.appIconImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons
+                  name={'apps'}
+                  size={36}
+                  color="#4b7bec"
+                  style={styles.appIconImage}
+                />
+              )}
               <View style={styles.appInfo}>
                 <View style={styles.appNameRow}>
                   <Text style={styles.appName}>{app.name}</Text>
                   <Text
                     style={{
                       ...styles.riskTag,
-                      backgroundColor: riskColors[app.risk].bg,
-                      color: riskColors[app.risk].color,
+                      backgroundColor: riskColors[getRisk(app)].bg,
+                      color: riskColors[getRisk(app)].color,
                     }}>
-                    {app.risk} Risk
+                    {getRisk(app)} Risk
                   </Text>
                 </View>
-                <Text style={styles.description}>{app.description}</Text>
+                <Text style={styles.description}>{app.packageName}</Text>
                 <View style={styles.metaRow}>
                   <Text style={styles.metaText}>
-                    {app.permissions.length} permissions
+                    {app.permissions?.length || 0} permissions
                   </Text>
                 </View>
               </View>

@@ -2,16 +2,37 @@
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {useNavigation} from '@react-navigation/native';
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import MainLayout from '../layouts/MainLayout';
-import {permissionsOverview} from '../data/mockData';
+import {getInstalledAppCount} from '../modules/AppListModule';
+
+// You should map critical/moderate/normal permissions somewhere central in your codebase
+const CRITICAL_PERMISSIONS = [
+  'android.permission.CAMERA',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.ACCESS_FINE_LOCATION',
+  'android.permission.READ_CONTACTS',
+  'android.permission.READ_SMS',
+  'android.permission.READ_PHONE_STATE',
+  'android.permission.READ_CALL_LOG',
+  // ...add more as you like
+];
+const MODERATE_PERMISSIONS = [
+  'android.permission.ACCESS_COARSE_LOCATION',
+  'android.permission.READ_EXTERNAL_STORAGE',
+  'android.permission.WRITE_EXTERNAL_STORAGE',
+  'android.permission.BLUETOOTH',
+  // ...add more as you like
+];
+// Anything else = normal
 
 const iconMap = {
   camera: '📷',
@@ -26,9 +47,89 @@ const levelColors = {
   Normal: {bg: '#e8f5e9', color: '#388e3c', border: '#388e3c'},
 };
 
+function classifyPermission(perm) {
+  if (CRITICAL_PERMISSIONS.includes(perm)) return 'Critical';
+  if (MODERATE_PERMISSIONS.includes(perm)) return 'Moderate';
+  return 'Normal';
+}
+
 export default function PermissionsOverview() {
-  const {counts, groups} = permissionsOverview;
+  const [overview, setOverview] = useState(null);
+  const [loading, setLoading] = useState(true);
   const navigation = useNavigation();
+
+  useEffect(() => {
+    getInstalledAppCount()
+      .then(apps => {
+        // Aggregate permissions across all apps
+        const permissionMap = {};
+        apps.forEach(app => {
+          (app.permissions || []).forEach(perm => {
+            if (!permissionMap[perm])
+              permissionMap[perm] = {apps: [], level: classifyPermission(perm)};
+            permissionMap[perm].apps.push(
+              app.name || app.packageName || 'Unknown App',
+            );
+          });
+        });
+
+        // Group permissions by level
+        const levels = ['Critical', 'Moderate', 'Normal'];
+        const groups = levels.map(level => ({
+          level,
+          permissions: Object.entries(permissionMap)
+            .filter(([_, v]) => v.level === level)
+            .map(([perm, v]) => ({
+              name: perm,
+              icon: perm.toLowerCase().includes('camera')
+                ? 'camera'
+                : perm.toLowerCase().includes('location')
+                ? 'map-pin'
+                : perm.toLowerCase().includes('microphone')
+                ? 'microphone'
+                : perm.toLowerCase().includes('contact') ||
+                  perm.toLowerCase().includes('account')
+                ? 'account-multiple'
+                : 'camera',
+              desc: '', // Could add a mapping for permission descriptions
+              apps: v.apps,
+            })),
+        }));
+
+        setOverview({
+          counts: {
+            critical: groups[0].permissions.length,
+            moderate: groups[1].permissions.length,
+            normal: groups[2].permissions.length,
+          },
+          groups,
+        });
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <MainLayout current="PermissionsOverview" activeTime="N/A">
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color="#4b7bec" />
+          <Text>Loading permissions data...</Text>
+        </View>
+      </MainLayout>
+    );
+  }
+
+  if (!overview) {
+    return (
+      <MainLayout current="PermissionsOverview" activeTime="N/A">
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <Text>Failed to load data</Text>
+        </View>
+      </MainLayout>
+    );
+  }
+
+  const {counts, groups} = overview;
 
   return (
     <MainLayout current="PermissionsOverview" activeTime="N/A">
@@ -92,7 +193,7 @@ export default function PermissionsOverview() {
                   ]}>
                   <View style={styles.permissionHeader}>
                     <Text style={styles.permissionIcon}>
-                      {iconMap[perm.icon]}
+                      {iconMap[perm.icon] || '🔒'}
                     </Text>
                     <Text style={styles.permissionName}>{perm.name}</Text>
                     <Text

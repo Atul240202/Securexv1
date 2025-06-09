@@ -5,12 +5,18 @@ import {
   Text,
   TouchableOpacity,
   View,
+  RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MainLayout from '../layouts/MainLayout';
-import {dashboardData} from '../data/dashboardData';
-import {StackNavigationProp} from '@react-navigation/stack';
 import {getInstalledAppCount} from '../modules/AppListModule';
+import {
+  isUsageAccessGranted,
+  openUsageAccessSettings,
+  getTodayUsageStats,
+  getTodayScreenOnTime,
+} from '../modules/UsageStatsModule';
+import UsageAccessModal from '../components/UsageAccessModal';
 
 const criticalPermissions = [
   'CAMERA',
@@ -24,74 +30,107 @@ const criticalPermissions = [
   'READ_CALL_LOG',
 ];
 
-const iconMap: Record<string, string> = {
-  camera: 'camera',
-  chat: 'chat',
-  map: 'map',
-  bank: 'bank',
-  calculator: 'calculator',
-};
+export default function DashboardScreen({navigation}) {
+  const [stats, setStats] = useState({totalApps: 0, riskApps: 0, topApps: []});
+  const [screenTime, setScreenTime] = useState(0);
+  const [usageApps, setUsageApps] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-type DashboardScreenProps = {
-  navigation: StackNavigationProp<any, any>;
-};
-
-export default function DashboardScreen({navigation}: DashboardScreenProps) {
-  const summary = dashboardData;
-  const [stats, setStats] = useState({
-    totalApps: 0,
-    riskApps: 0,
-    topApps: [],
-  });
-  // useEffect(() => {
-  //   console.log('Fetching installed apps...');
-  //   getInstalledAppCount()
-  //     .then(apps => {
-  //       // `apps` is the array of installed apps
-  //       console.log('First app:', apps[0]);
-  //       console.log('Second app:', apps[1]);
-  //       // Log all app names if you want
-  //       apps.forEach((app, idx) => {
-  //         console.log(`App ${idx + 1}:`, app);
-  //       });
-  //       // You can also use map/filter etc
-  //     })
-  //     .catch(err => {
-  //       console.warn('Failed to get installed apps:', err);
-  //     });
-  // }, []);
+  // Check usage access permission on mount
   useEffect(() => {
-    getInstalledAppCount()
-      .then(apps => {
-        if (apps && apps.length > 0) {
-          console.log('First installed app object:', apps[0]);
-        } else {
-          console.log('No apps returned!');
-        }
+    isUsageAccessGranted().then(granted => setShowModal(!granted));
+  }, []);
+
+  // Fetch stats
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  useEffect(() => {
+    getTodayUsageStats()
+      .then(stats => {
+        console.log('Today usage stats:', stats);
+        // You can update state here to show it in the UI
       })
       .catch(err => {
-        console.warn('Failed to get installed apps:', err);
+        console.warn('Failed to get today usage stats:', err);
       });
   }, []);
 
+  function fetchAllData() {
+    setRefreshing(true);
+
+    getInstalledAppCount().then(apps => {
+      const totalApps = apps.length;
+      const riskApps = apps.filter(app =>
+        app.permissions?.some(p =>
+          criticalPermissions.some(crit => p.toUpperCase().includes(crit)),
+        ),
+      ).length;
+      const topApps = [...apps]
+        .sort(
+          (a, b) => (b.permissions?.length || 0) - (a.permissions?.length || 0),
+        )
+        .slice(0, 5)
+        .map(app => ({
+          name: app.name,
+          usageMinutes: app.permissions?.length || 0,
+          icon: 'apps',
+        }));
+      setStats({totalApps, riskApps, topApps});
+    });
+
+    // Get screen-on time
+    getTodayScreenOnTime()
+      .then(sec => setScreenTime(sec))
+      .catch(() => setScreenTime(0));
+
+    // Get usage stats
+    getTodayUsageStats()
+      .then(apps => setUsageApps(apps || []))
+      .catch(() => setUsageApps([]));
+
+    setRefreshing(false);
+  }
+
+  // Human-readable time
+  function formatTime(secs) {
+    if (!secs) return '--';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return h ? `${h}h ${m}m` : `${m} min`;
+  }
+
   return (
-    <MainLayout current="dashboard" activeTime="2h 37m">
-      <ScrollView contentContainerStyle={styles.container}>
+    <MainLayout current="dashboard" activeTime={formatTime(screenTime)}>
+      <UsageAccessModal
+        visible={showModal}
+        onRequest={() => {
+          openUsageAccessSettings();
+          setShowModal(false);
+        }}
+      />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={fetchAllData} />
+        }>
         <Text style={styles.title}>
-          <Icon name="shield-outline" size={28} color="#4b7bec" /> SecurX
+          <Icon name="shield-check" size={28} color="#4b7bec" /> SecurX
         </Text>
         <Text style={styles.subtitle}>Mobile Security Dashboard</Text>
 
         <View style={styles.cardsRow}>
           <View style={styles.card}>
             <Icon name="cellphone" size={28} color="#4b7bec" />
-            <Text style={styles.cardNumber}>{summary.totalApps}</Text>
+            <Text style={styles.cardNumber}>{stats.totalApps}</Text>
             <Text style={styles.cardLabel}>Installed Apps</Text>
           </View>
           <View style={[styles.card, styles.cardDanger]}>
             <Icon name="alert-circle-outline" size={28} color="#eb3b5a" />
             <Text style={[styles.cardNumber, {color: '#eb3b5a'}]}>
-              {summary.riskApps}
+              {stats.riskApps}
             </Text>
             <Text style={styles.cardLabel}>Risk Apps</Text>
           </View>
@@ -101,38 +140,45 @@ export default function DashboardScreen({navigation}: DashboardScreenProps) {
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <Icon name="clock-outline" size={24} color="#20bf6b" />
             <Text style={{marginLeft: 8, fontSize: 18, fontWeight: '600'}}>
-              {summary.dailyScreenTime}
+              {formatTime(screenTime)}
             </Text>
           </View>
           <View style={styles.todayTag}>
-            <Text style={styles.todayText}>Today</Text>
+            <Text style={styles.todayText}>Screen-on Today</Text>
           </View>
         </View>
 
         <View style={styles.usageCard}>
-          <Text style={styles.usageTitle}>Top 5 Most Used Apps</Text>
-          {summary.mostUsedApps.map(app => (
-            <View key={app.name} style={styles.usageRow}>
-              <Icon
-                name={iconMap[app.icon]}
-                size={22}
-                color="#333"
-                style={{width: 30}}
-              />
-              <Text style={{flex: 1}}>{app.name}</Text>
-              <View style={styles.usageBarContainer}>
-                <View
-                  style={[
-                    styles.usageBar,
-                    {width: `${(app.usageMinutes / 240) * 100}%`},
-                  ]}
-                />
+          <Text style={styles.usageTitle}>Top 5 Apps by Usage</Text>
+          {usageApps
+            .sort(
+              (a, b) =>
+                (b.totalTimeInForeground || 0) - (a.totalTimeInForeground || 0),
+            )
+            .slice(0, 5)
+            .map(app => (
+              <View key={app.packageName} style={styles.usageRow}>
+                <Icon name="apps" size={22} color="#333" style={{width: 30}} />
+                <Text style={{flex: 1}}>{app.appName}</Text>
+                <View style={styles.usageBarContainer}>
+                  <View
+                    style={[
+                      styles.usageBar,
+                      {
+                        width: `${
+                          ((app.totalTimeInForeground || 0) /
+                            (usageApps[0]?.totalTimeInForeground || 1)) *
+                          100
+                        }%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={{width: 55, textAlign: 'right'}}>
+                  {Math.round((app.totalTimeInForeground || 0) / 60000)} min
+                </Text>
               </View>
-              <Text style={{width: 40, textAlign: 'right'}}>
-                {app.usageMinutes}m
-              </Text>
-            </View>
-          ))}
+            ))}
         </View>
 
         <View style={styles.bottomRow}>
@@ -155,6 +201,8 @@ export default function DashboardScreen({navigation}: DashboardScreenProps) {
     </MainLayout>
   );
 }
+
+// Keep your styles here (reuse your current styles)
 
 const styles = StyleSheet.create({
   container: {padding: 20, backgroundColor: '#f9fafb', minHeight: '100%'},

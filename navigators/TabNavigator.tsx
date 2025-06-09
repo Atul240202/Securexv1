@@ -13,7 +13,7 @@ export default function TabNavigator() {
       <Tab.Screen name="InstalledApps" component={InstalledApps} />
       <Tab.Screen name="PermissionsOverview" component={PermissionsOverview} />
       <Tab.Screen
-        name="InternalAppDetails"
+        name="InternalAppDetailsScreen"
         component={InternalAppDetailsScreen}
       />
     </Tab.Navigator>

@@ -1,6 +1,6 @@
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import MainLayout from '../layouts/MainLayout';
-import {internalAppDetails} from '../data/mockData';
+import {getInstalledAppCount} from '../modules/AppListModule';
 
 // ---------- TYPES ----------
 type RootStackParamList = {
@@ -47,8 +47,15 @@ export default function InternalAppDetailsScreen() {
     useRoute<RouteProp<RootStackParamList, 'InternalAppDetailsScreen'>>();
   const navigation = useNavigation();
   const {appName} = route.params;
+  const [app, setApp] = useState(null);
 
-  const app: AppDetails | undefined = internalAppDetails[appName];
+  useEffect(() => {
+    getInstalledAppCount().then(apps => {
+      // Find app with matching package name
+      const found = apps.find(a => a.packageName === appName);
+      setApp(found);
+    });
+  }, [appName]);
 
   if (!app) {
     return (
@@ -61,6 +68,37 @@ export default function InternalAppDetailsScreen() {
       </MainLayout>
     );
   }
+
+  // Calculate risk
+  const criticals = [
+    'CAMERA',
+    'RECORD_AUDIO',
+    'ACCESS_FINE_LOCATION',
+    'ACCESS_COARSE_LOCATION',
+    'READ_CONTACTS',
+    'READ_SMS',
+    'SEND_SMS',
+    'CALL_PHONE',
+    'READ_CALL_LOG',
+  ];
+  const criticalPerms =
+    app.permissions?.filter(p =>
+      criticals.some(c => p.toUpperCase().includes(c)),
+    ) || [];
+  let risk: 'Low' | 'Medium' | 'High' = 'Low';
+  if (criticalPerms.length >= 3) risk = 'High';
+  else if (criticalPerms.length === 2) risk = 'Medium';
+
+  // Suggestions Example
+  const suggestions = [];
+  if (risk === 'High')
+    suggestions.push(
+      'Review and revoke unnecessary permissions in your system settings.',
+    );
+  if (app.permissions?.includes('android.permission.ACCESS_FINE_LOCATION'))
+    suggestions.push('Disable location access if not required.');
+  if (app.permissions?.includes('android.permission.CAMERA'))
+    suggestions.push('Turn off camera access for extra privacy.');
 
   return (
     <MainLayout current="InstalledApps" activeTime="N/A">
@@ -78,17 +116,28 @@ export default function InternalAppDetailsScreen() {
         {/* App Summary Card */}
         <View style={styles.card}>
           <Text style={styles.appName}>{app.name}</Text>
-          <Text style={styles.appDesc}>{app.description}</Text>
-          <View style={getRiskBadgeStyle(app.risk)}>
-            <Text style={styles.riskText}>{app.risk} Risk</Text>
+          <Text style={styles.appDesc}>{app.packageName}</Text>
+          <View
+            style={{
+              backgroundColor:
+                risk === 'High'
+                  ? '#ef444420'
+                  : risk === 'Medium'
+                  ? '#f59e0b20'
+                  : '#10b98120',
+              alignSelf: 'flex-start',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+              marginTop: 8,
+            }}>
+            <Text style={styles.riskText}>{risk} Risk</Text>
           </View>
           <View style={styles.usageRow}>
             <View style={styles.usageBox}>
-              <Text style={styles.usageValue}>{app.usage.dailyMinutes}m</Text>
-              <Text style={styles.usageLabel}>Daily Usage</Text>
-            </View>
-            <View style={styles.usageBox}>
-              <Text style={styles.usageValue}>{app.permissions.length}</Text>
+              <Text style={styles.usageValue}>
+                {app.permissions?.length || 0}
+              </Text>
               <Text style={styles.usageLabel}>Permissions</Text>
             </View>
           </View>
@@ -97,34 +146,22 @@ export default function InternalAppDetailsScreen() {
         {/* Permissions Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Permissions</Text>
-          {app.permissions.map(perm => (
-            <View key={perm.name} style={styles.permissionItem}>
-              <Text style={styles.permissionIcon}>📌</Text>
-              <View>
-                <Text style={styles.permissionName}>{perm.name}</Text>
-                <Text style={styles.permissionDesc}>{perm.desc}</Text>
+          {app.permissions &&
+            app.permissions.map(perm => (
+              <View key={perm} style={styles.permissionItem}>
+                <Text style={styles.permissionIcon}>📌</Text>
+                <View>
+                  <Text style={styles.permissionName}>{perm}</Text>
+                </View>
               </View>
-              {perm.granted && <Text style={styles.check}>✅</Text>}
-            </View>
-          ))}
-        </View>
-
-        {/* Usage Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Usage Statistics</Text>
-          <Text style={styles.usageDetail}>
-            Daily Average: {app.usage.dailyMinutes} minutes
-          </Text>
-          <Text style={styles.usageDetail}>
-            Last used: {app.usage.lastUsed}
-          </Text>
+            ))}
         </View>
 
         {/* Suggestions Section */}
-        {app.suggestions.length > 0 && (
+        {suggestions.length > 0 && (
           <View style={styles.suggestionsBox}>
             <Text style={styles.sectionTitle}>Security Suggestions</Text>
-            {app.suggestions.map((sug, idx) => (
+            {suggestions.map((sug, idx) => (
               <Text key={idx} style={styles.suggestionText}>
                 ⚠️ {sug}
               </Text>
@@ -135,7 +172,6 @@ export default function InternalAppDetailsScreen() {
     </MainLayout>
   );
 }
-
 // ---------- HELPER FUNCTION ----------
 const getRiskBadgeStyle = (risk: 'Low' | 'Medium' | 'High') => ({
   backgroundColor: `${riskBadgeColor[risk]}20`,

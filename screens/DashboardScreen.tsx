@@ -106,6 +106,15 @@ export default function DashboardScreen({navigation}) {
     return h ? `${h}h ${m}m` : `${m} min`;
   }
 
+  function getUniqueAppsByName(apps) {
+    const seen = new Set();
+    return apps.filter(app => {
+      if (seen.has(app.appName)) return false;
+      seen.add(app.appName);
+      return true;
+    });
+  }
+
   if (loading) {
     return (
       <MainLayout current="dashboard" activeTime="--">
@@ -165,14 +174,15 @@ export default function DashboardScreen({navigation}) {
 
         <View style={styles.usageCard}>
           <Text style={styles.usageTitle}>Top 5 Apps by Usage</Text>
-          {usageApps
-            .sort(
+          {getUniqueAppsByName(
+            usageApps.sort(
               (a, b) =>
                 (b.totalTimeInForeground || 0) - (a.totalTimeInForeground || 0),
-            )
+            ),
+          )
             .slice(0, 5)
             .map(app => (
-              <View key={app.packageName} style={styles.usageRow}>
+              <View key={app.appName} style={styles.usageRow}>
                 <Icon name="apps" size={22} color="#333" style={{width: 30}} />
                 <Text style={{flex: 1}}>{app.appName}</Text>
                 <View style={styles.usageBarContainer}>
